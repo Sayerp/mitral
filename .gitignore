@@ -1,0 +1,6 @@
+# Build artifacts
+obj/
+mitral
+
+# OS generated files
+.DS_Store
