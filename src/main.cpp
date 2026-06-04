@@ -2,12 +2,28 @@
 #include <sys/socket.h> 
 #include <netinet/in.h> 
 #include <unistd.h>     
-#include <cstring>      
+#include <cstring>
+#include <hiredis/hiredis.h>      
 
 const int PORT = 8080;
 
 int main() {
     std::cout << "Mitral starting...\n";
+
+    redisContext *redis = redisConnect("127.0.0.1", 6379);
+    
+    if (redis == nullptr || redis->err) {
+        if (redis) {
+            std::cerr << "[ERROR] Redis connection failed: " << redis->errstr << "\n";
+            redisFree(redis);
+        } else {
+            std::cerr << "[ERROR] Cannot allocate Redis context.\n";
+        }
+        return 1;
+    }
+    
+    std::cout << "[INFO] Successfully connected to Redis!\n";
+
 
     int server_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (server_fd < 0) {

@@ -1,6 +1,6 @@
 CXX      = g++
 CXXFLAGS = -Wall -Wextra -std=c++17 -O2 -Iinclude
-LDFLAGS  = -lpthread
+LDFLAGS  = -lpthread -lhiredis
 
 SRC_DIR  = src
 OBJ_DIR  = obj
