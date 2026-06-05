@@ -3,7 +3,8 @@
 #include <netinet/in.h> 
 #include <unistd.h>     
 #include <cstring>
-#include <hiredis/hiredis.h>      
+#include <hiredis/hiredis.h>   
+#include <arpa/inet.h>   
 
 const int PORT = 8080;
 
@@ -21,7 +22,7 @@ int main() {
         }
         return 1;
     }
-    
+
     std::cout << "[INFO] Successfully connected to Redis!\n";
 
 
@@ -72,14 +73,53 @@ int main() {
 
         std::cout << "\n[+] Connection established with a client!\n";
 
+        char client_ip[INET_ADDRSTRLEN];
+        inet_ntop(AF_INET, &(client_addr.sin_addr), client_ip, INET_ADDRSTRLEN);
+
         char buffer[2048] = {0};
         ssize_t bytes_read = read(client_socket, buffer, sizeof(buffer) - 1);
         if (bytes_read > 0) {
-            std::cout << "--- INCOMING REQUEST ---\n" << buffer << "------------------------\n";
+            std::cout << "--- INCOMING REQUEST ---\n" << buffer << "------------------------\n"; // for testing, remove later for performance
         }
 
-        std::string response = "HTTP/1.1 200 OK\r\nContent-Length: 14\r\n\r\nMitral is up!\n"; // hard coded for now, logic implemented after
-        write(client_socket, response.c_str(), response.length());
+        int max_tokens = 5;
+        bool allow_request = false;
+
+        redisReply *reply = (redisReply*) redisCommand(redis, "EXISTS %s", client_ip);
+        bool exists = (reply->integer == 1);
+        freeReplyObject(reply);
+
+        if (!exists) {
+            redisCommand(redis, "SET %s %d EX 10", client_ip, max_tokens-1); // IP expires in 10 seconds
+            allow_request = true;
+            std::cout << "[+] New IP " << client_ip << " registered. Tokens remaining: " << (max_tokens - 1) << "\n";
+        } else {
+            reply = (redisReply*) redisCommand(redis, "GET %s", client_ip);
+
+            if (reply->str == nullptr) {
+                allow_request = true; // race condition, IP expires between EXISTS and GET, allow API request through once -> later dynamically create bucket
+            } else {
+                int current_tokens = std::stoi(reply->str);
+
+                if (current_tokens > 0) {
+                    redisCommand(redis, "DECR %s", client_ip);
+                    allow_request = true;
+                    std::cout << "[~] IP " << client_ip << " allowed. Tokens remaining: " << (current_tokens - 1) << "\n";
+                } else {
+                    allow_request = false;
+                    std::cout << "[X] IP " << client_ip << " BLOCKED. Rate limit exceeded.\n";
+                }
+            }
+            freeReplyObject(reply);
+        }
+
+        if (allow_request) {
+            std::string ok_resp = "HTTP/1.1 200 OK\r\nContent-Length: 14\r\n\r\nMitral is up!\n";
+            write(client_socket, ok_resp.c_str(), ok_resp.length());
+        } else {
+            std::string rate_limit_resp = "HTTP/1.1 429 Too Many Requests\r\nContent-Length: 21\r\n\r\nRate limit exceeded.\n";
+            write(client_socket, rate_limit_resp.c_str(), rate_limit_resp.length());
+        }
 
         close(client_socket);
         std::cout << "[-] Client connection closed.\n";
