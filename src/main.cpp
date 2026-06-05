@@ -93,7 +93,7 @@ int main() {
         freeReplyObject(reply);
 
         if (!exists) {
-            redisCommand(redis, "SET %s %d EX 10", client_ip, max_tokens-1); // IP expires in 10 seconds
+            freeReplyObject(redisCommand(redis, "SET %s %d EX 10", client_ip, max_tokens-1)); // IP expires in 10 seconds
             allow_request = true;
             std::cout << "[+] New IP " << client_ip << " registered. Tokens remaining: " << (max_tokens - 1) << "\n";
         } else {
@@ -105,7 +105,7 @@ int main() {
                 int current_tokens = std::stoi(reply->str);
 
                 if (current_tokens > 0) {
-                    redisCommand(redis, "DECR %s", client_ip);
+                    freeReplyObject(redisCommand(redis, "DECR %s", client_ip));
                     allow_request = true;
                     std::cout << "[~] IP " << client_ip << " allowed. Tokens remaining: " << (current_tokens - 1) << "\n";
                 } else {
