@@ -14,6 +14,8 @@ cleanup() {
 }
 trap cleanup EXIT
 
+docker exec mitral-redis redis-cli FLUSHALL > /dev/null
+
 ./mitral > /dev/null 2>&1 &
 SERVER_PID=$!
 
@@ -26,8 +28,6 @@ while ! nc -z localhost 8080 >/dev/null 2>&1; do
         exit 1
     fi
 done
-
-docker exec mitral-redis redis-cli FLUSHALL > /dev/null
 
 echo "Sending 7 rapid requests to localhost:8080..."
 SUCCESS_COUNT=0
