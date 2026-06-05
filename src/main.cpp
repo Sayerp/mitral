@@ -78,9 +78,12 @@ int main() {
 
         char buffer[2048] = {0};
         ssize_t bytes_read = read(client_socket, buffer, sizeof(buffer) - 1);
-        if (bytes_read > 0) {
-            std::cout << "--- INCOMING REQUEST ---\n" << buffer << "------------------------\n"; // for testing, remove later for performance
+        if (bytes_read <= 0) {
+            close(client_socket);
+            continue;
         }
+
+        std::cout << "--- INCOMING REQUEST ---\n" << buffer << "------------------------\n"; // for testing, remove later for performance
 
         int max_tokens = 5;
         bool allow_request = false;
