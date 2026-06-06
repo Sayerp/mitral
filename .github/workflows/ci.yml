@@ -1,0 +1,33 @@
+name: Mitral CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    - name: Install Dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libhiredis-dev netcat-openbsd
+
+    - name: Start Redis Container
+      run: |
+        docker run -d --name mitral-redis -p 6379:6379 redis:latest
+        sleep 2
+
+    - name: Build Mitral
+      run: make
+
+    - name: Run Rate Limiter Integration Test
+      run: |
+        chmod +x tests/test_rate_limiter.sh
+        ./tests/test_rate_limiter.sh
