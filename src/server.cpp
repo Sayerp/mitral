@@ -1,4 +1,5 @@
 #include "server.h"
+#include "rate_limiter.h"
 #include <iostream>
 #include <stdexcept>
 #include <sys/socket.h>
@@ -6,12 +7,13 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <cstring>
+#include <thread>
 
 static const char* HTTP_200 = "HTTP/1.1 200 OK\r\nContent-Length: 14\r\n\r\nMitral is up!\n";
 static const char* HTTP_429 = "HTTP/1.1 429 Too Many Requests\r\nContent-Length: 21\r\n\r\nRate limit exceeded.\n";
 
 Server::Server(int port)
-    : port_(port), server_fd_(-1), limiter_("127.0.0.1", 6379, 5)
+    : port_(port), server_fd_(-1)
 {
     server_fd_ = socket(AF_INET, SOCK_STREAM, 0);
     if (server_fd_ < 0)
@@ -59,12 +61,14 @@ void Server::run() {
         char ip_buf[INET_ADDRSTRLEN];
         inet_ntop(AF_INET, &client_addr.sin_addr, ip_buf, INET_ADDRSTRLEN);
 
-        handle_client(client_fd, ip_buf);
+        std::thread(&Server::handle_client, this, client_fd, std::string(ip_buf)).detach();
     }
 }
 
 void Server::handle_client(int client_fd, const std::string& client_ip) {
-    std::cout << "\n[+] Connection from " << client_ip << "\n";
+    RateLimiter local_limiter("127.0.0.1", 6379, 5);
+
+    std::cout << "\n[+] Connection from " << client_ip << " (Handled by thread: " << std::this_thread::get_id() << ")\n";
 
     char buffer[2048] = {};
     ssize_t bytes_read = read(client_fd, buffer, sizeof(buffer) - 1);
@@ -75,7 +79,7 @@ void Server::handle_client(int client_fd, const std::string& client_ip) {
 
     std::cout << "--- INCOMING REQUEST ---\n" << buffer << "------------------------\n";
 
-    const char* response = limiter_.allow(client_ip) ? HTTP_200 : HTTP_429;
+    const char* response = local_limiter.allow(client_ip) ? HTTP_200 : HTTP_429;
     write(client_fd, response, strlen(response));
 
     close(client_fd);
