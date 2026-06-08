@@ -15,4 +15,5 @@ public:
 private:
     redisContext* redis_;
     int max_tokens_;
+    static constexpr double REFILL_RATE = 1.0;
 };

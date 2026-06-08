@@ -26,6 +26,7 @@ bool RateLimiter::allow(const std::string& client_ip) {
         local key = KEYS[1]
         local max_tokens = tonumber(ARGV[1])
         local now = tonumber(ARGV[2])
+        local rate = tonumber(ARGV[3])
         
         local bucket = redis.call('HMGET', key, 'tokens', 'last_update')
         local tokens = tonumber(bucket[1])
@@ -36,7 +37,7 @@ bool RateLimiter::allow(const std::string& client_ip) {
             last_update = now
         else
             local elapsed = math.max(0, now - last_update)
-            local dripped = elapsed * 1 
+            local dripped = math.floor(elapsed * rate) 
             
             if dripped >= 1 then
                 tokens = math.min(max_tokens, tokens + dripped)
@@ -57,7 +58,7 @@ bool RateLimiter::allow(const std::string& client_ip) {
     auto now_clock = std::chrono::system_clock::now().time_since_epoch();
     long long now_sec = std::chrono::duration_cast<std::chrono::seconds>(now_clock).count();
 
-    redisReply* reply = (redisReply*)redisCommand(redis_, "EVAL %s 1 %s %d %lld", lua_script, client_ip.c_str(), max_tokens_, now_sec);
+    redisReply* reply = (redisReply*)redisCommand(redis_, "EVAL %s 1 %s %d %lld %f", lua_script, client_ip.c_str(), max_tokens_, now_sec, REFILL_RATE);
 
     bool allowed = false;
 
