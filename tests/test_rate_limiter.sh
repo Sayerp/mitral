@@ -4,7 +4,7 @@ GREEN='\033[0;32m'
 RED='\033[0;31m'
 NC='\033[0m'
 
-echo "Starting Mitral Integration Test..."
+echo "Starting Mitral Token Bucket Integration Test..."
 
 cleanup() {
     if [ -n "$SERVER_PID" ]; then
@@ -29,39 +29,46 @@ while ! nc -z localhost 8080 >/dev/null 2>&1; do
     fi
 done
 
-echo "Sending 7 rapid requests to localhost:8080..."
-SUCCESS_COUNT=0
-REJECT_COUNT=0
-
-for i in {1..7}; do
+echo "-----------------------------------"
+echo "Phase 1: Burst Capacity Test"
+for i in {1..5}; do
     STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080)
-    
-    if [ "$STATUS" -eq 200 ]; then
-        ((SUCCESS_COUNT++))
-    elif [ "$STATUS" -eq 429 ]; then
-        ((REJECT_COUNT++))
-    else
-        echo "Warning: Received unexpected status code $STATUS"
+    if [ "$STATUS" -ne 200 ]; then 
+        echo -e "${RED}[FAIL] Request $i should have been 200 OK.${NC}"
+        exit 1
     fi
 done
-
-echo "Simulating 11-second expiration (Force clearing Redis key)..."
-docker exec mitral-redis redis-cli FLUSHALL > /dev/null
+echo -e "${GREEN}[PASS] 5 initial tokens successfully consumed.${NC}"
 
 echo "-----------------------------------"
-RECOVERY_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080)
-if [ "$RECOVERY_STATUS" -eq 200 ]; then
-    echo -e "${GREEN}[PASS] System successfully recovered after simulated expiration.${NC}"
-else
-    echo -e "${RED}[FAIL] System failed to recover. Expected 200, got $RECOVERY_STATUS.${NC}"
+echo "Phase 2: Strict Limit Enforcement"
+STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080)
+if [ "$STATUS" -ne 429 ]; then 
+    echo -e "${RED}[FAIL] 6th request should have been 429 Too Many Requests.${NC}"
     exit 1
 fi
+echo -e "${GREEN}[PASS] 6th request correctly blocked.${NC}"
 
-if [ "$SUCCESS_COUNT" -eq 5 ] && [ "$REJECT_COUNT" -eq 2 ]; then
-    echo -e "${GREEN}[PASS] Fixed Window Counter enforced exactly 5 limits and rejected 2.${NC}" # update to Token Bucket once implemented in phase 3
-    exit 0
-else
-    echo -e "${RED}[FAIL] Expected 5 successes and 2 rejections.${NC}"
-    echo "Got: $SUCCESS_COUNT successes, $REJECT_COUNT rejections."
+echo "-----------------------------------"
+echo "Phase 3: The Fractional Drip Recovery"
+echo "Waiting 1.1 seconds for exactly ONE token to drip..."
+sleep 1.1
+
+STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080)
+if [ "$STATUS" -ne 200 ]; then 
+    echo -e "${RED}[FAIL] 7th request failed. The token bucket did not drip a token back!${NC}"
     exit 1
 fi
+echo -e "${GREEN}[PASS] 1 token successfully recovered!${NC}"
+
+echo "-----------------------------------"
+echo "Phase 4: The Token Math Check"
+STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080)
+if [ "$STATUS" -ne 429 ]; then 
+    echo -e "${RED}[FAIL] 8th request succeeded. The bucket gave back too many tokens!${NC}"
+    exit 1
+fi
+echo -e "${GREEN}[PASS] Fractional math verified. Only ONE token was granted.${NC}"
+
+echo "-----------------------------------"
+echo -e "${GREEN}[SUCCESS] Phase 3 Token Bucket architecture fully verified!${NC}"
