@@ -1,5 +1,6 @@
 #include "server.h"
 #include "rate_limiter.h"
+#include <hiredis/hiredis.h>
 #include <iostream>
 #include <stdexcept>
 #include <sys/socket.h>
@@ -15,6 +16,56 @@ static const char* HTTP_429 = "HTTP/1.1 429 Too Many Requests\r\nContent-Length:
 Server::Server(int port)
     : port_(port), server_fd_(-1)
 {
+    redisContext* boot_redis = redisConnect("127.0.0.1", 6379);
+    if (boot_redis == nullptr || boot_redis->err) {
+        std::string err = boot_redis ? boot_redis->errstr : "cannot allocate Redis context";
+        if (boot_redis) redisFree(boot_redis);
+        throw std::runtime_error("[FATAL] Server boot failed. Cannot connect to Redis: " + err);
+    }
+
+    const char* lua_script = R"(
+        local key = KEYS[1]
+        local max_tokens = tonumber(ARGV[1])
+        local now = tonumber(ARGV[2])
+        local rate = tonumber(ARGV[3])
+        
+        local bucket = redis.call('HMGET', key, 'tokens', 'last_update')
+        local tokens = tonumber(bucket[1])
+        local last_update = tonumber(bucket[2])
+
+        if tokens == nil then
+            tokens = max_tokens
+            last_update = now
+        else
+            local elapsed = math.max(0, now - last_update)
+            local dripped = math.floor(elapsed * rate) 
+            
+            if dripped >= 1 then
+                tokens = math.min(max_tokens, tokens + dripped)
+                last_update = now
+            end
+        end
+
+        if tokens >= 1 then
+            redis.call('HMSET', key, 'tokens', tokens - 1, 'last_update', last_update)
+            redis.call('EXPIRE', key, 10) 
+            return 1 
+        else
+            redis.call('EXPIRE', key, 10) 
+            return 0 
+        end
+    )";
+
+    redisReply *reply = (redisReply*)redisCommand(boot_redis, "SCRIPT LOAD %s", lua_script);
+    if (reply != nullptr && reply->type == REDIS_REPLY_STRING) {
+        lua_sha_cache_ = reply->str;
+        freeReplyObject(reply);
+    } else {
+        throw std::runtime_error("[FATAL] Server boot failed: Could not compile Lua script.");
+    }
+
+    redisFree(boot_redis);
+
     server_fd_ = socket(AF_INET, SOCK_STREAM, 0);
     if (server_fd_ < 0)
         throw std::runtime_error("[ERROR] Failed to allocate socket.");
@@ -66,7 +117,7 @@ void Server::run() {
 }
 
 void Server::handle_client(int client_fd, const std::string& client_ip) {
-    RateLimiter local_limiter("127.0.0.1", 6379, 5);
+    RateLimiter local_limiter("127.0.0.1", 6379, 5, lua_sha_cache_);
 
     std::cout << "\n[+] Connection from " << client_ip << " (Handled by thread: " << std::this_thread::get_id() << ")\n";
 
