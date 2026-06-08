@@ -119,8 +119,6 @@ void Server::run() {
 void Server::handle_client(int client_fd, const std::string& client_ip) {
     RateLimiter local_limiter("127.0.0.1", 6379, 5, lua_sha_cache_);
 
-    std::cout << "\n[+] Connection from " << client_ip << " (Handled by thread: " << std::this_thread::get_id() << ")\n";
-
     char buffer[2048] = {};
     ssize_t bytes_read = read(client_fd, buffer, sizeof(buffer) - 1);
     if (bytes_read <= 0) {
@@ -128,11 +126,8 @@ void Server::handle_client(int client_fd, const std::string& client_ip) {
         return;
     }
 
-    std::cout << "--- INCOMING REQUEST ---\n" << buffer << "------------------------\n";
-
     const char* response = local_limiter.allow(client_ip) ? HTTP_200 : HTTP_429;
     write(client_fd, response, strlen(response));
 
     close(client_fd);
-    std::cout << "[-] Connection closed.\n";
 }
