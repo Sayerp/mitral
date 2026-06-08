@@ -10,8 +10,8 @@
 #include <cstring>
 #include <thread>
 
-static const char* HTTP_200 = "HTTP/1.1 200 OK\r\nContent-Length: 14\r\n\r\nMitral is up!\n";
-static const char* HTTP_429 = "HTTP/1.1 429 Too Many Requests\r\nContent-Length: 21\r\n\r\nRate limit exceeded.\n";
+static const char* HTTP_200 = "HTTP/1.1 200 OK\r\nConnection: close\r\nContent-Length: 14\r\n\r\nMitral is up!\n";
+static const char* HTTP_429 = "HTTP/1.1 429 Too Many Requests\r\nConnection: close\r\nContent-Length: 21\r\n\r\nRate limit exceeded.\n";
 
 Server::Server(int port)
     : port_(port), server_fd_(-1)
