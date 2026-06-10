@@ -57,12 +57,14 @@ Server::Server(int port)
     )";
 
     redisReply *reply = (redisReply*)redisCommand(boot_redis, "SCRIPT LOAD %s", lua_script);
-    if (reply != nullptr && reply->type == REDIS_REPLY_STRING) {
-        lua_sha_cache_ = reply->str;
-        freeReplyObject(reply);
-    } else {
+    if (reply == nullptr || reply->type != REDIS_REPLY_STRING) {
+        if (reply) freeReplyObject(reply);
+        redisFree(boot_redis);
         throw std::runtime_error("[FATAL] Server boot failed: Could not compile Lua script.");
     }
+
+    lua_sha_cache_ = reply->str;
+    freeReplyObject(reply);
 
     redisFree(boot_redis);
 
