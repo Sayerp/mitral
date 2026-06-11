@@ -133,3 +133,35 @@ void Server::handle_client(int client_fd, const std::string& client_ip) {
 
     close(client_fd);
 }
+
+void Server::worker_thread() {
+    RateLimiter local_limiter("127.0.0.1", 6379, 5 lua_sha_cache_);
+
+    while (true) {
+        int client_fd = -1;
+
+        {
+            std::unique_lock<std::mutex> lock(queue_mutex_);
+
+            condition_.wait(lock, [this]() {
+                return !task_queue_.empty() || stop_pool_;
+            });
+
+            if (stop_pool_ && task_queue_.empty()) {
+                return;
+            }
+
+            client_fd = task_queue_.front();
+            task_queue_.pop();
+        }
+
+        char buffer[2048] = {};
+        ssize_t bytes_read = read(client_fd, buffer, sizeof(buffer) - 1);
+        if (bytes_read > 0) {
+            const char* response = local_limiter.allow("127.0.0.1") ? HTTP_200 : HTTP_429;
+            write(client_fd, response, strlen(response));
+        }
+
+        close(client_fd);
+    }
+}
