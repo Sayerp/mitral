@@ -135,7 +135,7 @@ void Server::handle_client(int client_fd, const std::string& client_ip) {
 }
 
 void Server::worker_thread() {
-    RateLimiter local_limiter("127.0.0.1", 6379, 5 lua_sha_cache_);
+    RateLimiter local_limiter("127.0.0.1", 6379, 5, lua_sha_cache_);
 
     while (true) {
         int client_fd = -1;
