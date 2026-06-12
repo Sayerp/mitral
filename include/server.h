@@ -26,6 +26,5 @@ private:
     std::condition_variable condition_;
     bool stop_pool_ = false;
 
-    void handle_client(int client_fd, const std::string& client_ip);
     void worker_thread();
 };

@@ -94,9 +94,26 @@ Server::Server(int port)
     }
 
     std::cout << "[INFO] Mitral is listening on port " << port_ << "...\n";
+
+    for (int i = 0; i < 12; i++) {
+        workers_.push_back(std::thread(&Server::worker_thread, this));
+    }
 }
 
 Server::~Server() {
+    {
+        std::unique_lock<std::mutex> lock(queue_mutex_);
+        stop_pool_ = true;
+    }
+
+    condition_.notify_all();
+
+    for (std::thread &worker : workers_) {
+        if (worker.joinable()) {
+            worker.join();
+        }
+    }
+
     if (server_fd_ >= 0) close(server_fd_);
 }
 
@@ -111,27 +128,13 @@ void Server::run() {
             continue;
         }
 
-        char ip_buf[INET_ADDRSTRLEN];
-        inet_ntop(AF_INET, &client_addr.sin_addr, ip_buf, INET_ADDRSTRLEN);
+        {
+            std::unique_lock<std::mutex> lock(queue_mutex_);
+            task_queue_.push(client_fd);
+        }
 
-        std::thread(&Server::handle_client, this, client_fd, std::string(ip_buf)).detach();
+        condition_.notify_one();
     }
-}
-
-void Server::handle_client(int client_fd, const std::string& client_ip) {
-    RateLimiter local_limiter("127.0.0.1", 6379, 5, lua_sha_cache_);
-
-    char buffer[2048] = {};
-    ssize_t bytes_read = read(client_fd, buffer, sizeof(buffer) - 1);
-    if (bytes_read <= 0) {
-        close(client_fd);
-        return;
-    }
-
-    const char* response = local_limiter.allow(client_ip) ? HTTP_200 : HTTP_429;
-    write(client_fd, response, strlen(response));
-
-    close(client_fd);
 }
 
 void Server::worker_thread() {
