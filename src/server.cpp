@@ -95,7 +95,7 @@ Server::Server(int port)
 
     std::cout << "[INFO] Mitral is listening on port " << port_ << "...\n";
 
-    for (int i = 0; i < 12; i++) {
+    for (int i = 0; i < THREAD_POOL_SIZE; i++) {
         workers_.push_back(std::thread(&Server::worker_thread, this));
     }
 }

@@ -25,6 +25,7 @@ private:
     std::mutex queue_mutex_;
     std::condition_variable condition_;
     bool stop_pool_ = false;
+    static constexpr int THREAD_POOL_SIZE = 128;
 
     void worker_thread();
 };
