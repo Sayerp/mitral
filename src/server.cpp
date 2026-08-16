@@ -10,6 +10,7 @@
 #include <cstring>
 #include <cstdlib>
 #include <thread>
+#include <tuple>
 
 static const char* HTTP_200 = "HTTP/1.1 200 OK\r\nConnection: close\r\nContent-Length: 14\r\n\r\nMitral is up!\n";
 static const char* HTTP_429 = "HTTP/1.1 429 Too Many Requests\r\nConnection: close\r\nContent-Length: 21\r\n\r\nRate limit exceeded.\n";
@@ -134,9 +135,11 @@ void Server::run() {
             continue;
         }
 
+        std::string client_ip = inet_ntoa(client_addr.sin_addr);
+
         {
             std::unique_lock<std::mutex> lock(queue_mutex_);
-            task_queue_.push(client_fd);
+            task_queue_.push({client_fd, client_ip});
         }
 
         condition_.notify_one();
@@ -148,6 +151,7 @@ void Server::worker_thread() {
 
     while (true) {
         int client_fd = -1;
+        std::string client_ip;
 
         {
             std::unique_lock<std::mutex> lock(queue_mutex_);
@@ -160,14 +164,14 @@ void Server::worker_thread() {
                 return;
             }
 
-            client_fd = task_queue_.front();
+            std::tie(client_fd, client_ip) = task_queue_.front();
             task_queue_.pop();
         }
 
         char buffer[2048] = {};
         ssize_t bytes_read = read(client_fd, buffer, sizeof(buffer) - 1);
         if (bytes_read > 0) {
-            const char* response = local_limiter.allow("127.0.0.1") ? HTTP_200 : HTTP_429;
+            const char* response = local_limiter.allow(client_ip) ? HTTP_200 : HTTP_429;
             write(client_fd, response, strlen(response));
         }
 
