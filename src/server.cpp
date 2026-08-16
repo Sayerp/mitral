@@ -8,6 +8,7 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <cstring>
+#include <cstdlib>
 #include <thread>
 
 static const char* HTTP_200 = "HTTP/1.1 200 OK\r\nConnection: close\r\nContent-Length: 14\r\n\r\nMitral is up!\n";
@@ -16,7 +17,12 @@ static const char* HTTP_429 = "HTTP/1.1 429 Too Many Requests\r\nConnection: clo
 Server::Server(int port)
     : port_(port), server_fd_(-1)
 {
-    redisContext* boot_redis = redisConnect("127.0.0.1", 6379);
+    const char* redis_host_env = std::getenv("REDIS_HOST");
+    const char* redis_port_env = std::getenv("REDIS_PORT");
+    redis_host_ = redis_host_env ? redis_host_env : "127.0.0.1";
+    redis_port_ = redis_port_env ? std::atoi(redis_port_env) : 6379;
+
+    redisContext* boot_redis = redisConnect(redis_host_.c_str(), redis_port_);
     if (boot_redis == nullptr || boot_redis->err) {
         std::string err = boot_redis ? boot_redis->errstr : "cannot allocate Redis context";
         if (boot_redis) redisFree(boot_redis);
@@ -138,7 +144,7 @@ void Server::run() {
 }
 
 void Server::worker_thread() {
-    RateLimiter local_limiter("127.0.0.1", 6379, 5, lua_sha_cache_);
+    RateLimiter local_limiter(redis_host_, redis_port_, 5, lua_sha_cache_);
 
     while (true) {
         int client_fd = -1;

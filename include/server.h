@@ -19,6 +19,8 @@ public:
 private:
     int port_;
     int server_fd_;
+    std::string redis_host_;
+    int redis_port_;
     std::string lua_sha_cache_;
     std::vector<std::thread> workers_;
     std::queue<int> task_queue_;
