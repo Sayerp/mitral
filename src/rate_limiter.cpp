@@ -23,9 +23,9 @@ bool RateLimiter::allow(const std::string& client_ip) {
     if (redis_ == nullptr || redis_->err) return true;
 
     auto now_clock = std::chrono::system_clock::now().time_since_epoch();
-    long long now_sec = std::chrono::duration_cast<std::chrono::seconds>(now_clock).count();
+    double now_sec = std::chrono::duration<double>(now_clock).count();
 
-    redisReply *reply = (redisReply*)redisCommand(redis_, "EVALSHA %s 1 %s %d %lld %f", script_sha_.c_str(), client_ip.c_str(), max_tokens_, now_sec, REFILL_RATE);
+    redisReply *reply = (redisReply*)redisCommand(redis_, "EVALSHA %s 1 %s %d %f %f", script_sha_.c_str(), client_ip.c_str(), max_tokens_, now_sec, REFILL_RATE);
 
     bool allowed = false;
 
