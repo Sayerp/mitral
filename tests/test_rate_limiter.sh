@@ -51,24 +51,40 @@ echo -e "${GREEN}[PASS] 6th request correctly blocked.${NC}"
 
 echo "-----------------------------------"
 echo "Phase 3: The Fractional Drip Recovery"
-echo "Waiting 1.1 seconds for exactly ONE token to drip..."
-sleep 1.1
+echo "Waiting ~1.1 seconds for tokens to drip..."
 
-STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080)
-if [ "$STATUS" -ne 200 ]; then 
-    echo -e "${RED}[FAIL] 7th request failed. The token bucket did not drip a token back!${NC}"
+T_DEPLETED_NS=$(date +%s%N)
+sleep 1.1
+T_AFTER_SLEEP_NS=$(date +%s%N)
+
+ELAPSED_NS=$((T_AFTER_SLEEP_NS - T_DEPLETED_NS))
+EXPECTED_DRIP=$((ELAPSED_NS / 1000000000))
+if [ "$EXPECTED_DRIP" -gt 5 ]; then
+    EXPECTED_DRIP=5
+fi
+if [ "$EXPECTED_DRIP" -lt 1 ]; then
+    echo -e "${RED}[FAIL] Only $((ELAPSED_NS / 1000000))ms elapsed -- not enough to test drip recovery.${NC}"
     exit 1
 fi
-echo -e "${GREEN}[PASS] 1 token successfully recovered!${NC}"
+echo "Measured elapsed: $((ELAPSED_NS / 1000000))ms -> expecting $EXPECTED_DRIP token(s) recovered"
+
+for ((i = 1; i <= EXPECTED_DRIP; i++)); do
+    STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080)
+    if [ "$STATUS" -ne 200 ]; then
+        echo -e "${RED}[FAIL] Recovered request $i failed (status $STATUS). Expected $EXPECTED_DRIP token(s) after measured elapsed time.${NC}"
+        exit 1
+    fi
+done
+echo -e "${GREEN}[PASS] $EXPECTED_DRIP token(s) successfully recovered, matching measured elapsed time.${NC}"
 
 echo "-----------------------------------"
 echo "Phase 4: The Token Math Check"
 STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080)
-if [ "$STATUS" -ne 429 ]; then 
-    echo -e "${RED}[FAIL] 8th request succeeded. The bucket gave back too many tokens!${NC}"
+if [ "$STATUS" -ne 429 ]; then
+    echo -e "${RED}[FAIL] Request after draining recovered tokens succeeded. The bucket gave back too many tokens!${NC}"
     exit 1
 fi
-echo -e "${GREEN}[PASS] Fractional math verified. Only ONE token was granted.${NC}"
+echo -e "${GREEN}[PASS] Fractional math verified. No extra tokens were granted.${NC}"
 
 echo "-----------------------------------"
 echo -e "${GREEN}[SUCCESS] Phase 3 Token Bucket architecture fully verified!${NC}"
