@@ -87,4 +87,4 @@ fi
 echo -e "${GREEN}[PASS] Fractional math verified. No extra tokens were granted.${NC}"
 
 echo "-----------------------------------"
-echo -e "${GREEN}[SUCCESS] Phase 3 Token Bucket architecture fully verified!${NC}"
+echo -e "${GREEN}[SUCCESS] Token Bucket architecture fully verified!${NC}"
