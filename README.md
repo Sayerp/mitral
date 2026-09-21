@@ -18,6 +18,7 @@ requests per second without per-request connection setup or lock contention.
 - [Request lifecycle](#request-lifecycle)
 - [Rate limiting: Token Bucket over Fixed Window](#rate-limiting-token-bucket-over-fixed-window)
 - [Object lifetime & shutdown](#object-lifetime--shutdown)
+- [Benchmark](#benchmark)
 - [Configuration](#configuration)
 - [Build & run](#build--run)
 - [API](#api)
@@ -175,6 +176,47 @@ void Server::worker_thread() {
 - `~Server()` joins every worker before closing the listening socket, so the
   destructor (and the process) doesn't return until all in-flight requests
   have actually finished.
+
+## Benchmark
+
+To check the "10,000+ requests per second" target from the intro against
+real numbers, both runs below used the same `wrk` load. 12 threads, 400
+connections, 10s duration, client and server on the same machine:
+
+```
+wrk -t12 -c400 -d10s http://localhost:8080
+```
+
+The token bucket only holds 5 tokens (refilling at 1/sec) against 400
+concurrent connections, so nearly every request in both runs was correctly
+rejected with `429`. These numbers measure the full request-handling path:
+accept → read → `EVALSHA` round-trip to Redis → write response, not just
+"requests successfully admitted."
+
+| Metric | Before pool + persistent connections | After |
+|---|---|---|
+| Requests/sec | 1,662.35 | **10,175.33** |
+| Avg latency | 185.10ms | **26.85ms** |
+| Total requests (10s) | 16,719 | 102,351 |
+| `429` responses | 16,705 | 102,336 |
+| Timeouts | 13 | 24 |
+
+<table>
+<tr>
+<th>Before</th>
+<th>After</th>
+</tr>
+<tr>
+<td><img src="assets/benchmark-before.png" alt="wrk output before: 1662.35 req/sec"></td>
+<td><img src="assets/benchmark-after.png" alt="wrk output after: 10175.33 req/sec"></td>
+</tr>
+</table>
+
+Moving from a detached thread with a fresh Redis connection per request to
+the fixed worker pool with one persistent Redis connection per thread (see
+[Object lifetime & shutdown](#object-lifetime--shutdown)) took throughput
+from ~1.7k req/sec to ~10.2k req/sec, a **~6.1x improvement**, while **average
+latency dropped ~6.9x**.
 
 ## Configuration
 
