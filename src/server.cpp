@@ -95,7 +95,7 @@ Server::Server(int port)
         throw std::runtime_error("[ERROR] Failed to bind to port " + std::to_string(port_));
     }
 
-    if (listen(server_fd_, 10) < 0) {
+    if (listen(server_fd_, 128) < 0) {
         close(server_fd_);
         throw std::runtime_error("[ERROR] Failed to listen on socket.");
     }
