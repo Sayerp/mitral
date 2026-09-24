@@ -29,6 +29,7 @@ private:
     std::condition_variable condition_;
     bool stop_pool_ = false;
     static constexpr int THREAD_POOL_SIZE = 128;
+    static constexpr int KEEPALIVE_IDLE_TIMEOUT_SEC = 5;
 
     void worker_thread();
 };

@@ -11,9 +11,10 @@
 #include <cstdlib>
 #include <thread>
 #include <tuple>
+#include <sys/time.h>
 
-static const char* HTTP_200 = "HTTP/1.1 200 OK\r\nConnection: close\r\nContent-Length: 14\r\n\r\nMitral is up!\n";
-static const char* HTTP_429 = "HTTP/1.1 429 Too Many Requests\r\nConnection: close\r\nContent-Length: 21\r\n\r\nRate limit exceeded.\n";
+static const char* HTTP_200 = "HTTP/1.1 200 OK\r\nConnection: keep-alive\r\nContent-Length: 14\r\n\r\nMitral is up!\n";
+static const char* HTTP_429 = "HTTP/1.1 429 Too Many Requests\r\nConnection: keep-alive\r\nContent-Length: 21\r\n\r\nRate limit exceeded.\n";
 
 Server::Server(int port)
     : port_(port), server_fd_(-1)
@@ -168,9 +169,16 @@ void Server::worker_thread() {
             task_queue_.pop();
         }
 
+        timeval idle_timeout{KEEPALIVE_IDLE_TIMEOUT_SEC, 0};
+        setsockopt(client_fd, SOL_SOCKET, SO_RCVTIMEO, &idle_timeout, sizeof(idle_timeout));
+
         char buffer[2048] = {};
-        ssize_t bytes_read = read(client_fd, buffer, sizeof(buffer) - 1);
-        if (bytes_read > 0) {
+        while (true) {
+            ssize_t bytes_read = read(client_fd, buffer, sizeof(buffer) - 1);
+            if (bytes_read <= 0) {
+                break;
+            }
+
             const char* response = local_limiter.allow(client_ip) ? HTTP_200 : HTTP_429;
             write(client_fd, response, strlen(response));
         }
