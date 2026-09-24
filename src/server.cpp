@@ -12,6 +12,7 @@
 #include <thread>
 #include <tuple>
 #include <sys/time.h>
+#include <netinet/tcp.h>
 
 static const char* HTTP_200 = "HTTP/1.1 200 OK\r\nConnection: keep-alive\r\nContent-Length: 14\r\n\r\nMitral is up!\n";
 static const char* HTTP_429 = "HTTP/1.1 429 Too Many Requests\r\nConnection: keep-alive\r\nContent-Length: 21\r\n\r\nRate limit exceeded.\n";
@@ -171,6 +172,9 @@ void Server::worker_thread() {
 
         timeval idle_timeout{KEEPALIVE_IDLE_TIMEOUT_SEC, 0};
         setsockopt(client_fd, SOL_SOCKET, SO_RCVTIMEO, &idle_timeout, sizeof(idle_timeout));
+
+        int nodelay = 1;
+        setsockopt(client_fd, IPPROTO_TCP, TCP_NODELAY, &nodelay, sizeof(nodelay));
 
         char buffer[2048] = {};
         while (true) {
