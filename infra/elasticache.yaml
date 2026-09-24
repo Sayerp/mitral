@@ -1,0 +1,86 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Recreates mitral's ElastiCache (Valkey) setup: subnet group, a security
+  group scoped to the EC2 app instance, and a single-node cache cluster.
+  Launch via the CloudFormation console (Create stack -> Upload a template
+  file) and fill in the parameters below from the console form.
+
+Parameters:
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: VPC the EC2 instance runs in (EC2 console -> instance -> Networking tab).
+
+  SubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: Subnets to place the cache subnet group in (pick one per AZ in the same VPC).
+
+  Ec2SecurityGroupId:
+    Type: AWS::EC2::SecurityGroup::Id
+    Description: >
+      The EC2 app instance's security group. The cache security group will
+      only accept Redis traffic from things carrying this group.
+
+  CacheNodeType:
+    Type: String
+    Default: cache.t3.micro
+    Description: Free-tier eligible by default. Change only if you know what you're doing cost-wise.
+
+  EngineVersion:
+    Type: String
+    Default: "9.1.0"
+    Description: >
+      Valkey engine version. Verify this matches what the console offers at
+      creation time (or leave the CacheParameterGroupName below in sync) --
+      Valkey's versioning has moved fast, this default may be stale.
+
+Resources:
+  CacheSubnetGroup:
+    Type: AWS::ElastiCache::SubnetGroup
+    Properties:
+      Description: Subnet group for mitral's ElastiCache cluster.
+      SubnetIds: !Ref SubnetIds
+
+  CacheSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allows Redis (6379) access from the mitral EC2 instance only.
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 6379
+          ToPort: 6379
+          SourceSecurityGroupId: !Ref Ec2SecurityGroupId
+
+  CacheCluster:
+    Type: AWS::ElastiCache::CacheCluster
+    Properties:
+      ClusterName: mitral-cache
+      Engine: valkey
+      EngineVersion: !Ref EngineVersion
+      CacheNodeType: !Ref CacheNodeType
+      NumCacheNodes: 1
+      Port: 6379
+      CacheSubnetGroupName: !Ref CacheSubnetGroup
+      VpcSecurityGroupIds:
+        - !GetAtt CacheSecurityGroup.GroupId
+      # Matches the console default used at manual creation time -- no custom
+      # tuning needed for this app's simple HMGET/HMSET/EXPIRE/EVALSHA usage.
+      CacheParameterGroupName: default.valkey9
+      SnapshotRetentionLimit: 0
+      AutoMinorVersionUpgrade: true
+
+Outputs:
+  CacheEndpoint:
+    Description: >
+      Primary endpoint hostname. NOTE: verify this attribute name still
+      resolves correctly for the Valkey engine at stack-creation time --
+      CloudFormation's ElastiCache::CacheCluster resource has historically
+      exposed this as "RedisEndpoint" regardless of engine, but this hasn't
+      been confirmed against a live Valkey deployment.
+    Value: !GetAtt CacheCluster.RedisEndpoint.Address
+
+  CachePort:
+    Value: !GetAtt CacheCluster.RedisEndpoint.Port
+
+  CacheSecurityGroupId:
+    Value: !GetAtt CacheSecurityGroup.GroupId
